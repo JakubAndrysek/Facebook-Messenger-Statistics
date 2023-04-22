@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Title</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+</head>
+<body>
+
+<div class="container">
+    <h1 class="text-center">Head</h1>
+    <h2 class="text-center">Sub</h2>
+
+    <p class="text-center">Souhrn vytvořen manuálně!</p>
+
+    <h3 class="text-center">Souhrn</h3>
+    <div class="d-flex align-items-center justify-content-center">
+        <ul>
+            <li>První zpráva: *</li>
+            <li>Celkem zpráv: *</li>
+            <li>Poslaných slov: *</li>
+            <li>Nejaktivnější den: *</li>
+        </ul>
+    </div>
+
+    <div class="d-flex align-items-center justify-content-center">
+
+
+        <div class="row">
+            <div class="col-6">
+                <h4 class="text-center">Name A</h4>
+                <ul>
+                    <li>První zpráva: "🎁"</li>
+                    <li>Počet zpráv: *</li>
+                    <li>Počet fotek: *</li>
+                    {#                <li>Průměrná délka zprávy: {{ kuba.average_message_length }}</li>#}
+                </ul>
+            </div>
+            <div class="col-6">
+                <h4 class="text-center">Name B</h4>
+                <ul>
+                    <li>První zpráva: "😁"</li>
+                    <li>Počet zpráv: *</li>
+                    <li>Počet fotek: *</li>
+                    {#                <li>Průměrná délka zprávy: {{ zdenka.average_message_length }}</li>#}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="text-center">Co si posíláme?</h3>
+    <div class="d-flex align-items-center justify-content-center">
+        {{ how_html|safe }}
+    </div>
+
+    <h3 class="text-center">Kdy posíláme?</h3>
+    <div class="d-flex align-items-center justify-content-center">
+        {{ when_html|safe }}
+    </div>
+
+    <h3 class="text-center">O čem si píšeme?</h3>
+    <div class="d-flex align-items-center justify-content-center">
+        {{ what_html|safe }}
+    </div>
+
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN"
+        crossorigin="anonymous"></script>
+</body>
+</html>

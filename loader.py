@@ -9,12 +9,25 @@ CHATDF_FILENAME = "chat_df.csv"
 MSGDF_FILENAME = "msg_df.csv"
 JSON_FILENAME = "message_"
 
+# Facebook JSON badly encoded
+# https://stackoverflow.com/a/62160255/15411117
+def parse_obj(obj):
+    if isinstance(obj, str):
+        return obj.encode('latin_1').decode('utf-8')
+
+    if isinstance(obj, list):
+        return [parse_obj(o) for o in obj]
+
+    if isinstance(obj, dict):
+        return {key: parse_obj(item) for key, item in obj.items()}
+
+    return obj
 
 def parse_from_json(path=None):
     """
     Parses JSON data into two pandas DataFrames:
-    One to hold the data for each chat and one to hold all messages. 
-    Pass in the path where your chat data was extracted or leave empty 
+    One to hold the data for each chat and one to hold all messages.
+    Pass in the path where your chat data was extracted or leave empty
     to use current directory
 
     Typical usage would have path = {facebook_data_dir}/messages/inbox
@@ -46,14 +59,15 @@ def parse_from_json(path=None):
                  'is_still_participant', 'thread_type', 'thread_path']
     message_data = []
     msg_cols = ['thread_path', 'timestamp', 'msg',
-                'sender', 'msg_type', 'sticker', 'photos', 'videos']
+                'sender', 'sticker', 'photos', 'videos', 'call_duration', 'audio', 'audio_duration']
 
     for json_file in all_files:
+        # open file as latin1 an encode to utf-8
         with open(json_file) as json_file:
-            current_chat = json.load(json_file)
+            current_chat = parse_obj(json.load(json_file))
 
         thread_path = current_chat['thread_path']
-        
+
         participants = [x['name']
                         for x in current_chat.get('participants', '')]
         title = current_chat.get('title', '')
@@ -70,13 +84,30 @@ def parse_from_json(path=None):
             ts = msg.get('timestamp_ms', 0) // 1000
             body = msg.get('content', None)
             sender = msg.get('sender_name', None)
-            msg_type = msg.get('type', None)
             sticker = msg.get('sticker', None)
             photos = msg.get('photos', None)
             videos = msg.get('videos', None)
+            audio = msg.get('audio_files', None)
+            audio = audio[0]['uri'] if audio else None
+            call_duration = msg.get('call_duration', None)
+            audio_duration = None
+
+
+
+            # if audio:
+            #     # print(f"Found audio file: {audio[0]['uri']}")
+            #     # audio_duration = ffprobe_duration(audio[0]['uri'])
+            #     try:
+            #         # relative_path = Path(audio[0]['uri'])
+            #         # audio = relative_path.resolve()
+            #         audio_duration = ffprobe_duration(audio[0]['uri'])
+            #         # to minutes - round to 1 decimal places
+            #         audio_duration = round(audio_duration / 60, 1)
+            #     except FileNotFoundError:
+            #         audio_duration = None
 
             message_data.append(
-                [thread_path, ts, body, sender, msg_type, sticker, photos, videos])
+                [thread_path, ts, body, sender, sticker, photos, videos, call_duration, audio, audio_duration])
 
     chat_df = pd.DataFrame(chat_data, columns=chat_cols)
     chat_df.set_index('thread_path', inplace=True)
@@ -95,7 +126,7 @@ def load_from_csv(path=None):
     chat_df = pd.read_csv(chat_file, converters={
                           "participants": eval}, index_col='thread_path')
     msg_df = pd.read_csv(msg_file, index_col=0)
-    msg_df['timestamp'] = pd.to_datetime(msg_df['timestamp'])
+    # msg_df['timestamp'] = pd.to_datetime(msg_df['timestamp'])
 
     return chat_df, msg_df
 
@@ -114,14 +145,19 @@ def check_path(path, fmt):
 
     filenames = os.listdir(path) if path else os.listdir()
     abs_path = os.path.abspath(path) if path else os.getcwd()
-    matching_files = [abs_path + "\\" +
-                      file for file in filenames if file.lower().endswith(fmt)]
+    files = [os.path.join(abs_path, f) for f in filenames if f.endswith(fmt)]
+    matching_files = [f for f in files if f.endswith(fmt)]
 
     if len(matching_files) == 0:
         print("No %s file found at %s" % (fmt, abs_path))
         raise FileNotFoundError
 
     return matching_files
+
+def ffprobe_duration(filename):
+    import subprocess
+    cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filename]
+    return float(subprocess.check_output(cmd))
 
 
 if __name__ == "__main__":

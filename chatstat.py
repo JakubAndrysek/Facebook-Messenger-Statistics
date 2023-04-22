@@ -1,15 +1,51 @@
+import os
 from datetime import datetime
+from pathlib import Path
+from tkinter import Tk
+from tkinter.filedialog import askdirectory
+
+from networkx.algorithms.bipartite import color
 from plotly.subplots import make_subplots
 import pandas as pd
 import plotly.graph_objects as go
 from functools import wraps
+import cv2
 
+
+def get_message_dir() -> Path:
+    print("Generate Messenger report")
+    print("Choose one of the following options:")
+    print("1. Input string path to message directory")
+    print("2. Open Tkinter file dialog to select message directory")
+    print("3. Use default path (./messages/inbox)")
+    option = input("Enter option: ")
+    if option == "1":
+        msg_dir = input("Enter path to message directory: ")
+        if not Path(msg_dir).is_dir():
+            raise NotADirectoryError(f"{msg_dir} is not a directory")
+    elif option == "2":
+        Tk().withdraw()
+        print("Select message directory - it is usually named 'inbox' and contains user chats")
+        msg_dir = askdirectory(title="Select message directory", initialdir=os.getcwd())
+    elif option == "3":
+        msg_dir = Path(os.getcwd()) / "messages" / "gvid" /"inbox"
+    else:
+        raise ValueError(f"Invalid option: {option}")
+    return msg_dir
+
+def serve_file(file_name):
+    """
+    serves a file using the default browser
+    """
+    import webbrowser
+    webbrowser.open('file://' + os.path.realpath(file_name))
 
 def show_or_return(graph_func):
     """
-    decorator for functions that can either 
+    decorator for functions that can either
     return a graph object or show a figure
     """
+
     @wraps(graph_func)
     def wrapper(*args, **kwargs):
         fig, graph = graph_func(*args, **kwargs)
@@ -17,6 +53,7 @@ def show_or_return(graph_func):
             fig.show()
         else:
             return graph
+
     return wrapper
 
 
@@ -47,7 +84,7 @@ class ChatStat:
 
     @show_or_return
     def biggest_chat(self, top=10, kind="pie", include_groups=True, show=True):
-        """ 
+        """
         plots the largest chats overall. by default, only plots top 10
 
         Parameters
@@ -87,8 +124,8 @@ class ChatStat:
 
     @show_or_return
     def sent_from(self, chat=None, top=10, omit_first=False, kind="pie", show=True):
-        """ 
-        plots the number of messages received based on sender for the DF passed in. 
+        """
+        plots the number of messages received based on sender for the DF passed in.
         Can be used on filtered DataFrames. by default, only plots top 10 senders
 
         Parameters
@@ -116,13 +153,13 @@ class ChatStat:
         count_df = count_df[start:top]
         count_df = count_df.join(self.chat_df)
         if kind == "pie":
-            graph = go.Pie(labels=count_df.index, values=count_df.msg, title=f"Messages by Sender (top {top})")
+            graph = go.Pie(labels=count_df.index, values=count_df.msg, title=f"Nejaktivnější odesílatelé (top {top})")
             fig = go.Figure(graph)
         elif kind == "bar":
             graph = go.Bar(x=count_df.index, y=count_df.msg)
             fig = go.Figure(graph)
-            fig.update_layout(xaxis=go.layout.XAxis(title=go.layout.xaxis.Title(text="Sender")),
-                              yaxis=go.layout.YAxis(title=go.layout.yaxis.Title(text="Number of Messages")))
+            fig.update_layout(xaxis=go.layout.XAxis(title=go.layout.xaxis.Title(text="Odesílatel")),
+                              yaxis=go.layout.YAxis(title=go.layout.yaxis.Title(text="Počet zpráv")))
         else:
             raise ValueError("kind must be either 'pie' or 'bar'")
         fig.update_layout(title_text=f"Messages by Sender (top {top})")
@@ -130,8 +167,8 @@ class ChatStat:
 
     @show_or_return
     def msg_types(self, chat=None, show=True):
-        """ 
-        Takes a filtered msg_df (based on sender or chat title) and breaks down the type of messages 
+        """
+        Takes a filtered msg_df (based on sender or chat title) and breaks down the type of messages
 
         Parameters
         ----------
@@ -146,17 +183,20 @@ class ChatStat:
             a Pie graph object
         """
         chat = self.msg_df if chat is None else chat
-        type_dict = {"type": {"stickers": chat.sticker.count(), "photos": chat.photos.count(), "videos": chat.videos.count(), "links": chat[[("http" in str(msg)) for msg in chat.msg]].msg.count()}}
+        type_dict = {
+            "type": {"samolepky": chat.sticker.count(), "fotky": chat.photos.count(), "videa": chat.videos.count(),
+                     "odkazy": chat[[("http" in str(msg)) for msg in chat.msg]].msg.count()}}
         type_df = pd.DataFrame(type_dict)
-        graph = go.Pie(labels=type_df.index, values=type_df.type, textinfo='label+percent', showlegend=False, title="Types of Multimedia Used")
+        graph = go.Pie(labels=type_df.index, values=type_df.type, textinfo='label+percent', showlegend=False,
+                       title="Sdílená média")
         fig = go.Figure(graph)
-        fig.update_layout(title_text="Types of Multimedia Used")
+        fig.update_layout(title_text="Sdílená média")
         return fig, graph
 
     @show_or_return
     def chat_types(self, chat=None, show=True):
-        """ 
-        Takes a filtered msg_df (based on sender or chat title) and breaks down the type of chat 
+        """
+        Takes a filtered msg_df (based on sender or chat title) and breaks down the type of chat
 
         Parameters
         ----------
@@ -172,13 +212,14 @@ class ChatStat:
         """
         messages = self.msg_df if chat is None else chat
         grouped = messages.groupby("thread_path").count().join(self.chat_df).groupby("thread_type").sum()
-        graph = go.Pie(labels=grouped.index, values=grouped.msg, textinfo='label+percent', showlegend=False, title="Types of Chat")
+        graph = go.Pie(labels=grouped.index, values=grouped.msg, textinfo='label+percent', showlegend=False,
+                       title="Types of Chat")
         fig = go.Figure(graph)
         fig.update_layout(title_text="Types of Chat")
         return fig, graph
 
     def personal_stats(self, name, word_lengths=[1, 3, 5]):
-        """ 
+        """
         Plots a bunch of different plots based on a fitlered DataFrame of messages from `name`
 
         Parameters
@@ -212,7 +253,8 @@ class ChatStat:
         source_graph = go.Pie(labels=full.index, values=full.proportion, title=f"Where are {name}'s messages from?")
         msg_types_graph = self.msg_types(from_sender, show=False)
         chat_types_graph = self.chat_types(from_sender, show=False)
-        fig = make_subplots(rows=2, cols=2, specs=[[{"type": "pie", "colspan": 2}, None], [{"type": "pie"}, {"type": "pie"}]])
+        fig = make_subplots(rows=2, cols=2,
+                            specs=[[{"type": "pie", "colspan": 2}, None], [{"type": "pie"}, {"type": "pie"}]])
         fig.add_trace(source_graph, row=1, col=1)
         fig.add_trace(msg_types_graph, row=2, col=1)
         fig.add_trace(chat_types_graph, row=2, col=2)
@@ -222,8 +264,8 @@ class ChatStat:
         self.word_counts(from_sender, length=word_lengths, show=True)
 
     def stat_by_chat(self, chat, word_lengths=[1, 3, 5]):
-        """ 
-        Plots a bunch of different plots based on a fitlered DataFrame of messages in the chat `chat` 
+        """
+        Plots a bunch of different plots based on a fitlered DataFrame of messages in the chat `chat`
 
         Parameters
         ----------
@@ -245,7 +287,7 @@ class ChatStat:
         print("Total # of messages: %d" % from_chat.msg.size)
         participants_graph = self.sent_from(from_chat, top=10, kind='pie', show=False)
         msg_types_graph = self.msg_types(from_chat, show=False)
-        fig = make_subplots(rows=1, cols=2, specs=[[{"type": "pie"}]*2])
+        fig = make_subplots(rows=1, cols=2, specs=[[{"type": "pie"}] * 2])
         fig.add_trace(msg_types_graph, row=1, col=1)
         fig.add_trace(participants_graph, row=1, col=2)
         fig.update_layout(title_text=f"Stats for chat: {chat}")
@@ -292,8 +334,11 @@ class ChatStat:
         plotly.graph_objects.Bar
             Bar plot of data
         """
+
         yearly_df = time_indexed.groupby("year").count()
-        yearly_graph = go.Bar(x=yearly_df.index, y=yearly_df.msg)
+
+        yearly_graph = go.Bar(x=yearly_df.index, y=yearly_df.msg, textposition='auto')
+        # Restrict X axis ticks labels to only show int values
         return yearly_graph
 
     def hourly_graph(self, time_indexed):
@@ -312,7 +357,8 @@ class ChatStat:
             Bar plot of data
         """
         hourly_df = time_indexed.groupby("hour").count()
-        hourly_df['hour_str'] = [datetime.strptime(str(hour), '%H').strftime("%I %p") for hour in hourly_df.index]
+        time_format = "%H"
+        hourly_df['hour_str'] = [datetime.strptime(str(hour), '%H').strftime("%H h") for hour in hourly_df.index]
         hourly_graph = go.Bar(x=hourly_df.hour_str, y=hourly_df.msg)
         return hourly_graph
 
@@ -332,8 +378,14 @@ class ChatStat:
             Bar plot of data
         """
         monthly_df = time_indexed.groupby("month").count()
-        monthly_df = monthly_df.reindex(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
+        # months = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"]
+        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        monthly_df = monthly_df.reindex(index=months)
+        # rename months to czech
+        monthly_df.index = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"]
         monthly_graph = go.Bar(x=monthly_df.index, y=monthly_df.msg)
+
+
         return monthly_graph
 
     def minutely_graph(self, time_indexed):
@@ -372,9 +424,11 @@ class ChatStat:
         """
         daily_df = time_indexed.resample("D").count().sort_values("msg", ascending=False)
         daily_df = daily_df[:top]
-        daily_graph = go.Bar(x=daily_df.index.strftime("%Y-%b-%d"), y=daily_df.msg)
+        # cz date format
+        date_format = "%d.%m.%Y"
+        daily_graph = go.Bar(x=daily_df.index.strftime(date_format), y=daily_df.msg)
         return daily_graph
-    
+
     def weekday_graph(self, time_indexed):
         """
         generates an aggregated message count by minute
@@ -392,12 +446,14 @@ class ChatStat:
         """
         weekday_df = time_indexed.groupby("weekday").count()
         weekday_df = weekday_df.reindex(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        # rename to czech
+        weekday_df.index = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"]
         weekday_graph = go.Bar(x=weekday_df.index, y=weekday_df.msg)
         return weekday_graph
 
     @show_or_return
     def time_stats(self, messages=None, show=True):
-        """ 
+        """
         Plots the time-based activity of the passed in DataFrame
         or all messages available
 
@@ -419,27 +475,26 @@ class ChatStat:
         monthly_graph = self.monthly_graph(time_indexed)
         hourly_graph = self.hourly_graph(time_indexed)
         minutely_graph = self.minutely_graph(time_indexed)
-        daily_graph = self.daily_graph(time_indexed)
         weekday_graph = self.weekday_graph(time_indexed)
+        daily_graph = self.daily_graph(time_indexed)
+        subplot_titles= ["Ročně", "Měsíčně", "Hodinově", "Minutu po minutě", "Denní maximum 😎", "Den v týdnu"]
 
-
-        when = make_subplots(rows=3, cols=2, specs=[[{"type": "bar"}] * 2] * 3,
-                             subplot_titles=['Yearly', 'Monthly', 'Hourly', 'Minute-by-Minute', "Single Day", "Day of Week"])
+        when = make_subplots(rows=3, cols=2, specs=[[{"type": "bar"}] * 2] * 3, subplot_titles=subplot_titles)
         when.add_trace(yearly_graph, row=1, col=1)
         when.add_trace(monthly_graph, row=1, col=2)
         when.add_trace(hourly_graph, row=2, col=1)
         when.add_trace(minutely_graph, row=2, col=2)
-        when.add_trace(daily_graph, row=3, col=1)
         when.add_trace(weekday_graph, row=3, col=2)
+        when.add_trace(daily_graph, row=3, col=1)
 
         when.update_layout(height=1425, width=950, title_text="Time-based Metrics", showlegend=False)
-        graphs = [yearly_graph, monthly_graph, hourly_graph, minutely_graph, daily_graph, weekday_graph]
+        graphs = [yearly_graph, monthly_graph, hourly_graph, minutely_graph, weekday_graph, daily_graph]
         return when, graphs
 
     @show_or_return
     def word_counts(self, chat=None, length=1, top=10, show=True):
-        """ 
-        Counts the word usage based on the passed in DataFrame `chat` and 
+        """
+        Counts the word usage based on the passed in DataFrame `chat` and
         plots words that are longer than `length`
 
         Parameters
@@ -456,9 +511,11 @@ class ChatStat:
         # filter out multimedia
         messages = chat['msg'][pd.isnull(chat.sticker) & pd.isnull(chat.photos) & pd.isnull(chat.videos)]
         words = {'count': {}}
+        sum_all_words = 0
         for msg in messages:
-            msg = str(msg).encode('latin1').decode('utf8')  # to get around encoding problems
+            msg = str(msg)  # .encode('latin1').decode('utf8')  # to get around encoding problems
             for word in msg.split(" "):
+                sum_all_words += 1
                 word = word.lower()
                 word = word.rstrip('?:!.,;')
                 if word in words['count']:
@@ -495,8 +552,8 @@ class ChatStat:
 
     @show_or_return
     def chat_counts(self, top=10, omit_first=True, show=True):
-        """ 
-        counts the number of chats each person is in and plots the top x people in the most chats 
+        """
+        counts the number of chats each person is in and plots the top x people in the most chats
 
         Parameters
         ----------
@@ -514,13 +571,14 @@ class ChatStat:
 
         """
         start = int(omit_first)
-        counts = self.msg_df.groupby(["sender", "thread_path"]).size().reset_index().groupby("sender").count().sort_values('thread_path', ascending=False)
+        counts = self.msg_df.groupby(["sender", "thread_path"]).size().reset_index().groupby(
+            "sender").count().sort_values('thread_path', ascending=False)
         counts = counts[start:top]
         graph = go.Bar(x=counts.index, y=counts.thread_path)
         fig = go.Figure(graph)
         fig.update_layout(title_text=f"Number of chats by person (Top {top})")
         return fig, graph
-    
+
     def chat_window(self, thread, start, end):
         """
         Generates a JSON file for a chat between two timestamps
@@ -543,6 +601,103 @@ class ChatStat:
         Generates a JSON file that can be used with chat_display.html
         """
         # stub for something upcoming (possibly)
+
+    @show_or_return
+    def cumulative_call_time(self, top=10, kind="bar", include_groups=True, show=True):
+        """
+        plots the largest call time by chat. by default, only plots top 10
+
+        Parameters
+        ----------
+        top: int, default=10
+            limits the plot to `top` number of chats
+        kind: str in {'pie', 'bar'}
+            kind of chart to plot, pie or bar
+        include_groups: bool
+            whether or not to include group chats
+        show: bool, default=True
+            toggle to show fig instead of returning graph obj
+
+        Returns
+        -------
+        plotly.graph_objects
+            graph object (Bar or Pie)
+        """
+        sum_df = self.msg_df.groupby("thread_path").sum()
+        sum_df['call_duration'] = sum_df['call_duration'].apply(lambda x: round(x / 3600, 1))
+        sum_df.sort_values("call_duration", inplace=True, ascending=False)
+        sum_df = sum_df.join(self.chat_df)
+        if not include_groups:
+            sum_df = sum_df[sum_df.thread_type == 'Regular']
+        sum_df = sum_df[:top]
+        if kind == "pie":
+            graph = go.Pie(labels=sum_df.title, values=sum_df.call_duration, title=f"Top {top} largest chats")
+            fig = go.Figure(graph)
+        elif kind == "bar":
+            graph = go.Bar(x=sum_df.title, y=sum_df.call_duration)
+            fig = go.Figure(graph)
+            fig.update_layout(xaxis=go.layout.XAxis(title=go.layout.xaxis.Title(text="Chat")),
+                              yaxis=go.layout.YAxis(
+                                  title=go.layout.yaxis.Title(text="Cumulative call time in seconds")))
+        else:
+            raise ValueError("kind must be either 'pie' or 'bar'")
+        fig.update_layout(title_text=f"Top {top} largest chats")
+        return fig, graph
+
+    @show_or_return
+    def audio_count_per_sender_pie(self, chat=None, top=10, show=True):
+        chat = self.msg_df if chat is None else chat
+        audio_df = chat[~pd.isnull(chat.audio)]
+        audio_df = audio_df.groupby("sender").count().sort_values("audio", ascending=False)
+        # audio_df = audio_df[:top]
+        graph = go.Pie(labels=audio_df.index, values=audio_df.audio, title=f"Kdo posílá nejvíc hlasovek? 🎧")
+        fig = go.Figure(graph)
+        return fig, graph
+
+
+
+
+    @show_or_return
+    def audio_count_per_month_sender(self, chat=None, top=10, show=True):
+        """
+        plots the number of audio messages sent per month per sender
+
+        Parameters
+        ----------
+        chat: pd.DataFrame, default=None
+            the chat to plot, if None, plots the entire chat
+        top: int, default=10
+            limits the plot to `top` number of chats
+        show: bool, default=True
+            toggle to show fig instead of returning graph obj
+
+        Returns
+        -------
+        plotly.graph_objects.Bar or None
+            Bar graph depicting audio counts
+        """
+
+
+        chat = self.msg_df if chat is None else chat
+        # audio in not None
+        time_indexed = self.generate_time_indexed_df(chat)
+        # group by sender and month and count
+        audio_counts = time_indexed.groupby(["sender", "month"]).audio.count().reset_index()
+
+        # show each mont for each sender
+        graph = []
+        for sender in audio_counts.sender.unique():
+            mask = audio_counts.sender == sender
+            graph.append(go.Bar(x=audio_counts[mask].month, y=audio_counts[mask].audio, name=sender))
+        fig = go.Figure(graph)
+        fig.update_layout(title_text=f"Audio messages per month by sender (Top {top})")
+        return fig, graph
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
